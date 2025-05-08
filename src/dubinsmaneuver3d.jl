@@ -1,3 +1,5 @@
+using StaticArrays
+
 # include("dubinsmaneuver2d.jl")
 include("vertical.jl")
 
@@ -14,16 +16,28 @@ This struct contains all necessary information about the maneuver.
   * length - total length of the 3D maneuver 
 """
 mutable struct DubinsManeuver3D
-    qi::Vector{Float64}
-    qf::Vector{Float64}
+    qi::SVector{5,Float64}  # Fixed-size array for initial configuration
+    qf::SVector{5,Float64}  # Fixed-size array for final configuration
 
     rhomin::Float64
-    pitchlims::Vector{Float64}
+    pitchlims::SVector{2,Float64}  # Fixed-size array for pitch limits
 
-    path::Vector{DubinsManeuver2D}
+    path::Vector{DubinsManeuver2D}  # Keeping this dynamic as it depends on the number of paths
     length::Float64
-end        
-        
+end
+
+function DubinsManeuver3D(qi::Vector, qf::Vector, rhomin, pitchlims::Vector)
+    @assert length(qi) >= 5
+    @assert length(qf) >= 5
+    @assert length(pitchlims) >= 2
+    return DubinsManeuver3D(
+        SVector{5,Float64}(qi[1:5]),
+        SVector{5,Float64}(qf[1:5]),
+        rhomin,
+        SVector{2,Float64}(pitchlims[1:2])
+    )
+end
+
 """
     DubinsManeuver3D(qi, qf, rhomin, pitchlims)
 
@@ -33,139 +47,123 @@ Create 3D Dubins path between two configurations qi, qf
     * rhomin - minimum turning radius
     * pitchlims - limits of the pitch angle [pitch_min, pitch_max] 
 """
-function DubinsManeuver3D(qi::Vector{Float64}, qf::Vector{Float64}, 
-        rhomin::Float64, pitchlims::Vector{Float64})
-    maneuver = DubinsManeuver3D(qi, qf, rhomin, pitchlims, [], -1.)
+function DubinsManeuver3D(qi::SVector{5,Float64}, qf::SVector{5,Float64},
+    rhomin::Float64, pitchlims::SVector{2,Float64})
+    maneuver = DubinsManeuver3D(qi, qf, rhomin, pitchlims, Vector{DubinsManeuver2D}(undef, 2), -1.0)
 
-    # Delta Z (height)
-    zi = maneuver.qi[3]
-    zf = maneuver.qf[3]
-    dz = zf - zi
-    
+    # Pre-allocate paths for reuse
+    dlat_best = DubinsManeuver2D(SVector{3,Float64}(0, 0, 0), SVector{3,Float64}(0, 0, 0), 1.0,
+        DubinsStruct(0.0, 0.0, 0.0, Inf, ""))
+    dlon_best = DubinsManeuver2D(SVector{3,Float64}(0, 0, 0), SVector{3,Float64}(0, 0, 0), 1.0,
+        DubinsStruct(0.0, 0.0, 0.0, Inf, ""))
+
+    result = Vector{DubinsManeuver2D}(undef, 2)
+
     # Multiplication factor of rhomin in [1, 1000]
     a = 1.0
     b = 1.0
 
-    fa = try_to_construct(maneuver, maneuver.rhomin * a)
-    fb = try_to_construct(maneuver, maneuver.rhomin * b)
+    found_valid_a = try_to_construct!(result, maneuver, maneuver.rhomin * a)
 
-    while length(fb) < 2
+    found_valid_b = try_to_construct!(result, maneuver, maneuver.rhomin * b)
+    while !found_valid_b
         b *= 2.0
-        fb = try_to_construct(maneuver, maneuver.rhomin * b)
-    end
-
-    if length(fa) > 0
-        maneuver.path = fa
-    else
-        if length(fb) < 2
-            error("No maneuver exists")
+        found_valid_b = try_to_construct!(result, maneuver, maneuver.rhomin * b)
+        if b > 1000.0
+            error("No Dubins path exists")
         end
     end
 
-    # Binary searchs
-    # while abs(b-a) > 10e-5:
-    #     c = (a+b) / 2.0
-    #     #print("Binary search ", [a, b])
-    #     fc = self.try_to_construct(self.rhomin * c)
+    best_length = result[2].maneuver.length
+    maneuver.length = best_length
 
-    #     if len(fc) > 0:
-    #         b = c
-    #         fb = fc
-    #     else:
-    #         a = c
-
-    # Local optimalization between horizontal and vertical radii
+    # Binary search with less allocations
     step = 0.1
     while abs(step) > 1e-10
         c = b + step
-        if c < 1.0
-            c = 1.0
+        c = max(c, 1.0)
+        valid = try_to_construct!(result, maneuver, maneuver.rhomin * c)
+
+        if valid && result[2].maneuver.length < best_length
+            b = c
+            best_length = result[2].maneuver.length
+            maneuver.length = best_length
+            step *= 2.0
+            continue
         end
-        fc = try_to_construct(maneuver, maneuver.rhomin * c)
-        if length(fc) > 0
-            if fc[2].maneuver.length < fb[2].maneuver.length
-                b = c
-                fb = fc
-                step *= 2.
-                continue
-            end
-        end
+
         step *= -0.1
     end
-    
-    maneuver.path = fb
-    Dlat, Dlon = fb
-    maneuver.length = Dlon.maneuver.length
+
     return maneuver
 end
 
-function compute_sampling(self::DubinsManeuver3D; numberOfSamples::Integer = 1000)
+function compute_sampling(self::DubinsManeuver3D; numberOfSamples::Integer=1000)
     Dlat, Dlon = self.path
-    # Sample points on the final path
-    points = []
+    points = Vector{SVector{5,Float64}}(undef, numberOfSamples)
     lena = Dlon.maneuver.length
-    rangeLon = lena .* collect(0:numberOfSamples-1) ./ (numberOfSamples-1)
 
-    for ran in rangeLon   
-        offsetLon = ran
+    step = lena / (numberOfSamples - 1)
+    for i in 1:numberOfSamples
+        offsetLon = (i - 1) * step
         qSZ = getCoordinatesAt(Dlon, offsetLon)
         qXY = getCoordinatesAt(Dlat, qSZ[1])
-        push!(points, [qXY[1], qXY[2], qSZ[2], qXY[3], qSZ[3]])
+        points[i] = SVector{5,Float64}(qXY[1], qXY[2], qSZ[2], qXY[3], qSZ[3])
     end
-    
+
     points
 end
 
-function try_to_construct(self::DubinsManeuver3D, horizontal_radius::Float64)
-    qi2D = self.qi[[1,2,4]]
-    qf2D = self.qf[[1,2,4]]
+function try_to_construct!(result::Vector{DubinsManeuver2D}, self::DubinsManeuver3D, horizontal_radius::Float64)
+    qi2D = SVector{3,Float64}(self.qi[1], self.qi[2], self.qi[4])
+    qf2D = SVector{3,Float64}(self.qf[1], self.qf[2], self.qf[4])
 
-    #@show qi2D, qf2D
+    Dlat = DubinsManeuver2D(qi2D, qf2D; rhomin=horizontal_radius)
 
-    Dlat = DubinsManeuver2D(qi2D, qf2D; rhomin = horizontal_radius)    
-    
-    # After finding a long enough 2D curve, calculate the Dubins path on SZ axis
-    qi3D = [0., self.qi[3], self.qi[5]]
-    qf3D = [Dlat.maneuver.length, self.qf[3], self.qf[5]]
-
-    vertical_curvature = sqrt(1. /self.rhomin/self.rhomin - 1. /horizontal_radius/horizontal_radius)
+    vertical_curvature = sqrt(1.0 / self.rhomin^2 - 1.0 / horizontal_radius^2)
     if vertical_curvature < 1e-5
-        return []
+        return false
     end
+    vertical_radius = 1.0 / vertical_curvature
 
-    vertical_radius = 1. / vertical_curvature
-    # Dlon = Vertical1D(qi3D, qf3D, vertical_radius, self.pitchlims)
-    Dlon = DubinsManeuver2D(qi3D, qf3D; rhomin = vertical_radius)
+    qi3D = SVector{3,Float64}(0.0, self.qi[3], self.qi[5])
+    qf3D = SVector{3,Float64}(Dlat.maneuver.length, self.qf[3], self.qf[5])
 
-    if Dlon.maneuver.case == "RLR" || Dlon.maneuver.case == "RLR"
-        return []
+    Dlon = DubinsManeuver2D(qi3D, qf3D; rhomin=vertical_radius)
+
+    if Dlon.maneuver.case == "RLR" || Dlon.maneuver.case == "LRL"
+        return false
     end
 
     if Dlon.maneuver.case[1] == 'R'
         if self.qi[5] - Dlon.maneuver.t < self.pitchlims[1]
-            return []
+            return false
         end
     else
         if self.qi[5] + Dlon.maneuver.t > self.pitchlims[2]
-            return []
+            return false
         end
     end
-    
-    # Final 3D path is formed by the two curves (Dlat, Dlon)
-    return [Dlat, Dlon]
+
+    result[1] = Dlat
+    result[2] = Dlon
+    return true
 end
 
-function getLowerBound(qi, qf, rhomin=1, pitchlims=[-pi/4, pi/2])
-    maneuver = DubinsManeuver3D(qi, qf, rhomin, pitchlims, [], -1.)
+function getLowerBound(qi, qf, rhomin::Float64=1.0, pitchlims::SVector{2,Float64}=@SVector Float64[-pi/4, pi/2])
+    qi = SVector{5,Float64}(qi...)
+    qf = SVector{5,Float64}(qf...)
+    maneuver = DubinsManeuver3D(qi, qf, rhomin, pitchlims, [], -1.0)
 
-    spiral_radius = rhomin * ( (cos(max(-pitchlims[1], pitchlims[2]))) ^ 2 )
+    spiral_radius = rhomin * ((cos(max(-pitchlims[1], pitchlims[2])))^2)
 
-    qi2D = [maneuver.qi[i] for i in [1,2,4]]
-    qf2D = [maneuver.qf[i] for i in [1,2,4]]
-    Dlat = DubinsManeuver2D(qi2D, qf2D; rhomin = spiral_radius)  
+    qi2D = @SVector Float64[maneuver.qi[1], maneuver.qi[2], maneuver.qi[4]]
+    qf2D = @SVector Float64[maneuver.qf[1], maneuver.qf[2], maneuver.qf[4]]
 
-    qi3D = [0, maneuver.qi[3], maneuver.qi[5]]
-    qf3D = [Dlat.maneuver.length, maneuver.qf[3], maneuver.qf[5]]
+    Dlat = DubinsManeuver2D(qi2D, qf2D; rhomin=spiral_radius)
+
+    qi3D = @SVector Float64[0.0, maneuver.qi[3], maneuver.qi[5]]
+    qf3D = @SVector Float64[Dlat.maneuver.length, maneuver.qf[3], maneuver.qf[5]]
 
     Dlon = Vertical(qi3D, qf3D, maneuver.rhomin, maneuver.pitchlims)
 
@@ -180,8 +178,11 @@ function getLowerBound(qi, qf, rhomin=1, pitchlims=[-pi/4, pi/2])
     return maneuver
 end
 
-function getUpperBound(qi, qf, rhomin=1, pitchlims=[-pi/4, pi/2])
-    maneuver = DubinsManeuver3D(qi, qf, rhomin, pitchlims, [], -1.)
+function getUpperBound(qi, qf, rhomin=1, pitchlims=[-pi / 4, pi / 2])
+    qi = SVector{5,Float64}(qi...)
+    qf = SVector{5,Float64}(qf...)
+
+    maneuver = DubinsManeuver3D(qi, qf, rhomin, pitchlims, [], -1.0)
 
     safeRadius = sqrt(2) * maneuver.rhomin
 
@@ -192,14 +193,14 @@ function getUpperBound(qi, qf, rhomin=1, pitchlims=[-pi/4, pi/2])
     if dist < 4.0 * safeRadius
         maneuver.length = Inf
         return maneuver
-    end    
+    end
 
-    qi2D = [maneuver.qi[i] for i in [1,2,4]]
-    qf2D = [maneuver.qf[i] for i in [1,2,4]]
-    Dlat = DubinsManeuver2D(qi2D, qf2D; rhomin = safeRadius)  
+    qi2D = @SVector Float64[maneuver.qi[1], maneuver.qi[2], maneuver.qi[4]]
+    qf2D = @SVector Float64[maneuver.qf[1], maneuver.qf[2], maneuver.qf[4]]
+    Dlat = DubinsManeuver2D(qi2D, qf2D; rhomin=safeRadius)
 
-    qi3D = [0, maneuver.qi[3], maneuver.qi[5]]
-    qf3D = [Dlat.maneuver.length, maneuver.qf[3], maneuver.qf[5]]
+    qi3D = @SVector Float64[0.0, maneuver.qi[3], maneuver.qi[5]]
+    qf3D = @SVector Float64[Dlat.maneuver.length, maneuver.qf[3], maneuver.qf[5]]
 
     Dlon = Vertical(qi3D, qf3D, safeRadius, maneuver.pitchlims)
 

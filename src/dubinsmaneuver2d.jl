@@ -13,8 +13,8 @@ end
 Classical 2D Dubins Curve
 """
 mutable struct DubinsManeuver2D
-    qi::Vector{Float64}
-    qf::Vector{Float64}
+    qi::SVector{3,Float64}
+    qf::SVector{3,Float64}
     rhomin::Float64
     maneuver::DubinsStruct
 end
@@ -22,7 +22,7 @@ end
 """
 Classical 2D Dubins Curve
 """
-function DubinsManeuver2D(qi, qf; rhomin=1., minLength = nothing, disable_CCC = false)
+function DubinsManeuver2D(qi::SVector{3,Float64}, qf::SVector{3,Float64}; rhomin::Float64=1.0, minLength::Union{Nothing,Float64}=nothing, disable_CCC::Bool=false)::DubinsManeuver2D
     maneuver = DubinsManeuver2D(qi, qf, rhomin, DubinsStruct(0.0, 0.0, 0.0, Inf, ""))
 
     dx = maneuver.qf[1] - maneuver.qi[1]
@@ -30,7 +30,7 @@ function DubinsManeuver2D(qi, qf; rhomin=1., minLength = nothing, disable_CCC = 
     D = sqrt(dx^2 + dy^2)
 
     # Distance normalization
-    d = D/maneuver.rhomin       
+    d = D / maneuver.rhomin
 
     # Normalize the problem using rotation
     rotationAngle = mod2pi(atan(dy, dx))
@@ -55,28 +55,28 @@ function DubinsManeuver2D(qi, qf; rhomin=1., minLength = nothing, disable_CCC = 
         _paths = [pathLSL, pathRSR, pathLSR, pathRSL, pathRLR, pathLRL]
     end
 
-    if (abs(d) < maneuver.rhomin * 1e-5 && abs(a) < maneuver.rhomin * 1e-5 && abs(b) < maneuver.rhomin * 1e-5)      
+    if (abs(d) < maneuver.rhomin * 1e-5 && abs(a) < maneuver.rhomin * 1e-5 && abs(b) < maneuver.rhomin * 1e-5)
         dist_2D = maximum(abs.(maneuver.qi[1:2] - maneuver.qf[1:2]))
         if dist_2D < maneuver.rhomin * 1e-5
             pathC = _C(maneuver)
             _paths = [pathC]
         end
     end
-    
+
     a(x) = x.length
-    sort!(_paths, by=a)    
-        
+    sort!(_paths, by=a)
+
     if (minLength === nothing)
         maneuver.maneuver = _paths[1]
-    else    
+    else
         for p in _paths
             if p.length >= minLength
                 maneuver.maneuver = p
                 break
             end
         end
-        
-        if (maneuver.maneuver === nothing)        
+
+        if (maneuver.maneuver === nothing)
             inf = Inf
             maneuver.maneuver = DubinsManeuver2D(inf, inf, inf, inf, "XXX")
         end
@@ -86,106 +86,106 @@ function DubinsManeuver2D(qi, qf; rhomin=1., minLength = nothing, disable_CCC = 
 end
 
 ########## LSL ##########
-@inline function _LSL(self, a, b, d, sa, ca, sb, cb) 
+@inline function _LSL(self::DubinsManeuver2D, a::Float64, b::Float64, d::Float64, sa::Float64, ca::Float64, sb::Float64, cb::Float64)::DubinsStruct
     aux = atan(cb - ca, d + sa - sb)
     t = mod2pi(-a + aux)
-    p = sqrt(2 + d^2 - 2*cos(a-b) + 2*d*(sa-sb))
+    p = sqrt(2 + d^2 - 2 * cos(a - b) + 2 * d * (sa - sb))
     q = mod2pi(b - aux)
-    length = (t+p+q) * self.rhomin        
+    length = (t + p + q) * self.rhomin
     case = "LSL"
     return DubinsStruct(t, p, q, length, case)
 end
 
 ########## RSR ##########
-@inline function _RSR(self, a, b, d, sa, ca, sb, cb) 
-    aux = atan(ca-cb, d-sa+sb)         
+@inline function _RSR(self::DubinsManeuver2D, a::Float64, b::Float64, d::Float64, sa::Float64, ca::Float64, sb::Float64, cb::Float64)::DubinsStruct
+    aux = atan(ca - cb, d - sa + sb)
     t = mod2pi(a - aux)
-    p = sqrt(2 + d^2 - 2*cos(a-b) + 2*d*(sb-sa))
-    q = mod2pi(mod2pi(-b) + aux)   
-    length = (t+p+q) * self.rhomin        
+    p = sqrt(2 + d^2 - 2 * cos(a - b) + 2 * d * (sb - sa))
+    q = mod2pi(mod2pi(-b) + aux)
+    length = (t + p + q) * self.rhomin
     case = "RSR"
     return DubinsStruct(t, p, q, length, case)
 end
 
 ########## LSR ##########
-@inline function _LSR(self, a, b, d, sa, ca, sb, cb)
-    aux1 = -2 + d^2 + 2*cos(a-b) + 2*d*(sa+sb)       
-    if (aux1 > 0)      
+@inline function _LSR(self::DubinsManeuver2D, a::Float64, b::Float64, d::Float64, sa::Float64, ca::Float64, sb::Float64, cb::Float64)::DubinsStruct
+    aux1 = -2 + d^2 + 2 * cos(a - b) + 2 * d * (sa + sb)
+    if (aux1 > 0)
         p = sqrt(aux1)
-        aux2 = atan(-ca-cb, d+sa+sb) - atan(-2/p)
+        aux2 = atan(-ca - cb, d + sa + sb) - atan(-2 / p)
         t = mod2pi(-a + aux2)
         q = mod2pi(-mod2pi(b) + aux2)
-    else        
+    else
         t = p = q = Inf
     end
-    length = (t+p+q) * self.rhomin
+    length = (t + p + q) * self.rhomin
     case = "LSR"
     return DubinsStruct(t, p, q, length, case)
 end
-    
+
 ########## RSL ##########
-@inline function _RSL(self, a, b, d, sa, ca, sb, cb)
-    aux1 = d^2 - 2 + 2*cos(a-b) - 2*d*(sa+sb)
-    if (aux1 > 0)    
+@inline function _RSL(self::DubinsManeuver2D, a::Float64, b::Float64, d::Float64, sa::Float64, ca::Float64, sb::Float64, cb::Float64)::DubinsStruct
+    aux1 = d^2 - 2 + 2 * cos(a - b) - 2 * d * (sa + sb)
+    if (aux1 > 0)
         p = sqrt(aux1)
-        aux2 = atan(ca+cb, d-sa-sb) - atan(2/p)
+        aux2 = atan(ca + cb, d - sa - sb) - atan(2 / p)
         t = mod2pi(a - aux2)
-        q = mod2pi(mod2pi(b) - aux2) 
-    else       
+        q = mod2pi(mod2pi(b) - aux2)
+    else
         t = p = q = Inf
-    end            
-    length = (t+p+q) * self.rhomin
-    case = "RSL";
+    end
+    length = (t + p + q) * self.rhomin
+    case = "RSL"
     return DubinsStruct(t, p, q, length, case)
 end
 
 ########## RLR ##########
-@inline function _RLR(self, a, b, d, sa, ca, sb, cb)
-    aux = (6 - d^2 + 2*cos(a-b) + 2*d*(sa-sb))/8;
-    if (abs(aux) <= 1)       
-        p = mod2pi(-acos(aux));   
-        t = mod2pi(a - atan(ca-cb, d-sa+sb) + p/2)
+@inline function _RLR(self::DubinsManeuver2D, a::Float64, b::Float64, d::Float64, sa::Float64, ca::Float64, sb::Float64, cb::Float64)::DubinsStruct
+    aux = (6 - d^2 + 2 * cos(a - b) + 2 * d * (sa - sb)) / 8
+    if (abs(aux) <= 1)
+        p = mod2pi(-acos(aux))
+        t = mod2pi(a - atan(ca - cb, d - sa + sb) + p / 2)
         q = mod2pi(a - b - t + p)
-    else       
+    else
         t = p = q = Inf
-    end 
-    length = (t+p+q) * self.rhomin  
+    end
+    length = (t + p + q) * self.rhomin
     case = "RLR"
     return DubinsStruct(t, p, q, length, case)
 end
-    
+
 
 ########## LRL ##########
-@inline function _LRL(self, a, b, d, sa, ca, sb, cb)
-    aux = (6 - d^2 + 2*cos(a-b) + 2*d*(-sa+sb))/8;
-    if (abs(aux) <= 1)       
+@inline function _LRL(self::DubinsManeuver2D, a::Float64, b::Float64, d::Float64, sa::Float64, ca::Float64, sb::Float64, cb::Float64)::DubinsStruct
+    aux = (6 - d^2 + 2 * cos(a - b) + 2 * d * (-sa + sb)) / 8
+    if (abs(aux) <= 1)
         p = mod2pi(-acos(aux))
-        t = mod2pi(-a + atan(-ca+cb, d+sa-sb) + p/2)
+        t = mod2pi(-a + atan(-ca + cb, d + sa - sb) + p / 2)
         q = mod2pi(b - a - t + p)
-    else      
+    else
         t = p = q = Inf
-    end 
-    length = (t+p+q) * self.rhomin      
+    end
+    length = (t + p + q) * self.rhomin
     case = "LRL"
     return DubinsStruct(t, p, q, length, case)
-end    
-    
+end
+
 ########## C ##########
-@inline function _C(self)
-    t = 0.
-    p = 2*pi
-    q = 0.
-    length = (t+p+q) * self.rhomin
+@inline function _C(self::DubinsManeuver2D)::DubinsStruct
+    t = 0.0
+    p = 2 * pi
+    q = 0.0
+    length = (t + p + q) * self.rhomin
     case = "RRR"
     return DubinsStruct(t, p, q, length, case)
 end
 
-function getCoordinatesAt(self, offset)
+function getCoordinatesAt(maneuver::DubinsManeuver2D, offset::Float64)::SVector{3,Float64}
     # Offset normalizado
-    noffset = offset/self.rhomin       
+    noffset = offset / self.rhomin
 
     # Translação para a origem
-    qi = [0., 0., self.qi[3]]        
+    qi = [0.0, 0.0, self.qi[3]]
 
     # Gerando as configurações intermediárias            
     l1 = self.maneuver.t
@@ -196,39 +196,39 @@ function getCoordinatesAt(self, offset)
     # Obtendo o restante das configurações
     if (noffset < l1)
         q = getPositionInSegment(self, noffset, qi, self.maneuver.case[1])
-    elseif (noffset < (l1+l2))
-        q = getPositionInSegment(self, noffset-l1, q1, self.maneuver.case[2])
+    elseif (noffset < (l1 + l2))
+        q = getPositionInSegment(self, noffset - l1, q1, self.maneuver.case[2])
     else
-        q = getPositionInSegment(self, noffset-l1-l2, q2, self.maneuver.case[3])        
+        q = getPositionInSegment(self, noffset - l1 - l2, q2, self.maneuver.case[3])
     end
     # Translação para a posição anterior
     q[1] = q[1] * self.rhomin + self.qi[1]
     q[2] = q[2] * self.rhomin + self.qi[2]
-    q[3] = mod2pi(q[3])         
-    
+    q[3] = mod2pi(q[3])
+
     return q
 end
-        
-function getPositionInSegment(self, offset, qi, case)
-    q = [0., 0., 0.]
+
+function getPositionInSegment(self::DubinsManeuver2D, offset::Float64, qi::SVector{3,Float64}, case::Char)::SVector{3,Float64}
+    q = [0.0, 0.0, 0.0]
     if (case == 'L')
-        q[1] = qi[1] + sin(qi[3]+offset) - sin(qi[3])
-        q[2] = qi[2] - cos(qi[3]+offset) + cos(qi[3])
+        q[1] = qi[1] + sin(qi[3] + offset) - sin(qi[3])
+        q[2] = qi[2] - cos(qi[3] + offset) + cos(qi[3])
         q[3] = qi[3] + offset
     elseif (case == 'R')
-        q[1] = qi[1] - sin(qi[3]-offset) + sin(qi[3])
-        q[2] = qi[2] + cos(qi[3]-offset) - cos(qi[3])
+        q[1] = qi[1] - sin(qi[3] - offset) + sin(qi[3])
+        q[2] = qi[2] + cos(qi[3] - offset) - cos(qi[3])
         q[3] = qi[3] - offset
     elseif (case == 'S')
         q[1] = qi[1] + cos(qi[3]) * offset
         q[2] = qi[2] + sin(qi[3]) * offset
         q[3] = qi[3]
     end
-    return q  
-end          
+    return q
+end
 
-function getSamplingPoints(self, res=0.1)
-    points = []    
+function getSamplingPoints(self::DubinsManeuver2D, res::Float64=0.1)::Vector{SVector{3,Float64}}
+    points = []
     range = 0.0:res:self.maneuver.length
     for offset in range
         push!(points, getCoordinatesAt(self, offset))

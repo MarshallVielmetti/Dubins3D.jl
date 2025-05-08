@@ -1,7 +1,8 @@
+using StaticArrays
 
 include("dubinsmaneuver2d.jl")
 
-function Vertical(qi, qf, rhomin, pitchmax)
+function Vertical(qi::SVector{3,Float64}, qf::SVector{3,Float64}, rhomin::Float64, pitchmax::SVector{2,Float64})::DubinsManeuver2D
     maneuver = DubinsManeuver2D(qi, qf, rhomin, DubinsStruct(0.0, 0.0, 0.0, Inf, ""))
 
     dx = maneuver.qf[1] - maneuver.qi[1]
@@ -9,45 +10,50 @@ function Vertical(qi, qf, rhomin, pitchmax)
     D = sqrt(dx^2 + dy^2)
 
     # Distance normalization
-    d = D/maneuver.rhomin       
+    d = D / maneuver.rhomin
 
     # Normalize the problem using rotation
     rotationAngle = mod2pi(atan(dy, dx))
     a = mod2pi(maneuver.qi[3] - rotationAngle)
     b = mod2pi(maneuver.qf[3] - rotationAngle)
-    
+
     # CSC
     pathLSL = _LSL(maneuver)
     pathRSR = _RSR(maneuver)
     pathLSR = _LSR(maneuver, pitchmax)
     pathRSL = _RSL(maneuver, pitchmax)
-    _paths = [pathLSR ,pathLSL, pathRSR, pathRSL]
-    
-    a(x) = x.length
-    sort!(_paths, by=a)   
-        
+    _paths = [pathLSL, pathRSR, pathLSR, pathRSL]
+
+    # for such a short vector, its actually faster not to sort it
+    best_path = nothing
+    best_length = Inf
+
     for p in _paths
-        # chech if the turns are too long (do not meet pitch constraint)
-        if abs(p.t) < pi && abs(p.q) < pi
-            # check the inclination based on pitch constraint
-            center_angle = maneuver.qi[3] + ((p.case[1] == 'L') ? p.t : - p.t)
-            if ((center_angle < pitchmax[1]) || (center_angle > pitchmax[2]))
+        # Check if the turns are too long (do not meet pitch constraint)
+        if abs(p.t) < π && abs(p.q) < π
+            # Check the inclination based on pitch constraint
+            center_angle = maneuver.qi[3] + ((p.case[1] == 'L') ? p.t : -p.t)
+            if center_angle < pitchmax[1] || center_angle > pitchmax[2]
                 continue
             end
-            maneuver.maneuver = p
-            break
+            if p.length < best_length
+                best_length = p.length
+                best_path = p
+            end
         end
     end
-    
-    if maneuver.maneuver === nothing           
+
+    if best_path === nothing
         maneuver.maneuver = DubinsStruct(Inf, Inf, Inf, Inf, "XXX")
+    else
+        maneuver.maneuver = best_path
     end
 
     return maneuver
 end
 
 ########## LSL ##########
-function _LSL(self)
+function _LSL(self::DubinsManeuver2D)::DubinsStruct
     theta1 = self.qi[3]
     theta2 = self.qf[3]
 
@@ -62,13 +68,13 @@ function _LSL(self)
         c2, s2 = radius * cos(theta2), radius * sin(theta2)
 
         # origins of the turns
-        o1 = p1 + [ -s1, c1]
-        o2 = p2 + [ -s2, c2]
+        o1 = SVector(p1[1] - s1, p1[2] + c1)
+        o2 = SVector(p2[1] - s2, p2[2] + c2)
 
         diff = o2 - o1
         center_distance = sqrt(diff[1]^2 + diff[2]^2)
         centerAngle = atan(diff[2], diff[1])
-                
+
         t = mod2pi(-theta1 + centerAngle)
         p = center_distance / radius
         q = mod2pi(theta2 - centerAngle)
@@ -77,7 +83,7 @@ function _LSL(self)
             t = 0.0
             q = theta2 - theta1
             turn_end_y = o2[2] - radius * cos(theta1)
-            diff_y = turn_end_y - p1[2] 
+            diff_y = turn_end_y - p1[2]
             if abs(theta1) > 1e-5 && (diff_y < 0 == theta1 < 0)
                 p = diff_y / sin(theta1) / radius
             else
@@ -88,7 +94,7 @@ function _LSL(self)
             t = theta2 - theta1
             q = 0.0
             turn_end_y = o1[2] - radius * cos(theta2)
-            diff_y = p2[2] - turn_end_y 
+            diff_y = p2[2] - turn_end_y
             if abs(theta2) > 1e-5 && (diff_y < 0 == theta2 < 0)
                 p = diff_y / sin(theta2) / radius
             else
@@ -98,15 +104,15 @@ function _LSL(self)
     else
         t = p = q = Inf
     end
-    
-    length = (t+p+q) * self.rhomin        
+
+    length = (t + p + q) * self.rhomin
     case = "LSL"
-    
+
     return DubinsStruct(t, p, q, length, case)
 end
 
 ########## RSR ##########
-function _RSR(self)
+function _RSR(self::DubinsManeuver2D)::DubinsStruct
     theta1 = self.qi[3]
     theta2 = self.qf[3]
 
@@ -121,13 +127,13 @@ function _RSR(self)
         c2, s2 = radius * cos(theta2), radius * sin(theta2)
 
         # origins of the turns
-        o1 = p1 + [ s1, -c1]
-        o2 = p2 + [ s2, -c2]
+        o1 = SVector(p1[1] + s1, p1[2] - c1)
+        o2 = SVector(p2[1] + s2, p2[2] - c2)
 
         diff = o2 - o1
         center_distance = sqrt(diff[1]^2 + diff[2]^2)
         centerAngle = atan(diff[2], diff[1])
-                
+
         t = mod2pi(theta1 - centerAngle)
         p = center_distance / radius
         q = mod2pi(-theta2 + centerAngle)
@@ -136,7 +142,7 @@ function _RSR(self)
             t = 0.0
             q = -theta2 + theta1
             turn_end_y = o2[2] + radius * cos(theta1)
-            diff_y = turn_end_y - p1[2] 
+            diff_y = turn_end_y - p1[2]
             if abs(theta1) > 1e-5 && (diff_y < 0 == theta1 < 0)
                 p = diff_y / sin(theta1) / radius
             else
@@ -147,7 +153,7 @@ function _RSR(self)
             t = -theta2 + theta1
             q = 0.0
             turn_end_y = o1[2] + radius * cos(theta2)
-            diff_y = p2[2] - turn_end_y 
+            diff_y = p2[2] - turn_end_y
             if abs(theta2) > 1e-5 && (diff_y < 0 == theta2 < 0)
                 p = diff_y / sin(theta2) / radius
             else
@@ -157,15 +163,15 @@ function _RSR(self)
     else
         t = p = q = Inf
     end
-    
-    length = (t+p+q) * self.rhomin        
+
+    length = (t + p + q) * self.rhomin
     case = "RSR"
-    
+
     return DubinsStruct(t, p, q, length, case)
 end
 
 ########## LSR ##########
-function _LSR(self, pitchmax)
+function _LSR(self::DubinsManeuver2D, pitchmax::SVector{2,Float64})::DubinsStruct
     theta1 = self.qi[3]
     theta2 = self.qf[3]
 
@@ -179,20 +185,20 @@ function _LSR(self, pitchmax)
     c2, s2 = radius * cos(theta2), radius * sin(theta2)
 
     # origins of the turns
-    o1 = p1 + [-s1,  c1]
-    o2 = p2 + [ s2, -c2]
+    o1 = SVector(p1[1] - s1, p1[2] + c1)
+    o2 = SVector(p2[1] + s2, p2[2] - c2)
 
     diff = o2 - o1
     center_distance = sqrt(diff[1]^2 + diff[2]^2)
 
     # not constructible
     if center_distance < 2 * radius
-        diff[1] = sqrt(4.0 * radius * radius - diff[2] * diff[2])
-        alpha = pi/2.0
+        diff = SVector(sqrt(4.0 * radius * radius - diff[2] * diff[2]), diff[2])
+        alpha = π / 2.0
     else
         alpha = asin(2.0 * radius / center_distance)
     end
-        
+
     centerAngle = atan(diff[2], diff[1]) + alpha
 
     if centerAngle < pitchmax[2]
@@ -207,21 +213,21 @@ function _LSR(self, pitchmax)
         # points on boundary between C and S segments
         c1, s1 = radius * cos(centerAngle), radius * sin(centerAngle)
         c2, s2 = radius * cos(centerAngle), radius * sin(centerAngle)
-        w1 = o1 - [-s1,  c1]
-        w2 = o2 - [ s2, -c2]
+        w1 = o1 - SVector(-s1, c1)
+        w2 = o2 - SVector(s2, -c2)
 
         p = (w2[2] - w1[2]) / sin(centerAngle) / radius
     end
 
-    length = (t+p+q) * self.rhomin
+    length = (t + p + q) * self.rhomin
     case = "LSR"
-    
+
     return DubinsStruct(t, p, q, length, case)
 end
-    
-    
+
+
 ########## RSL ##########
-function _RSL(self, pitchmax)
+function _RSL(self::DubinsManeuver2D, pitchmax::SVector{2,Float64})::DubinsStruct
     theta1 = self.qi[3]
     theta2 = self.qf[3]
 
@@ -235,20 +241,20 @@ function _RSL(self, pitchmax)
     c2, s2 = radius * cos(theta2), radius * sin(theta2)
 
     # origins of the turns
-    o1 = p1 + [ s1, -c1]
-    o2 = p2 + [-s2,  c2]
+    o1 = SVector(p1[1] + s1, p1[2] - c1)
+    o2 = SVector(p2[1] - s2, p2[2] + c2)
 
     diff = o2 - o1
     center_distance = sqrt(diff[1]^2 + diff[2]^2)
 
     # not constructible
     if center_distance < 2 * radius
-        diff[1] = sqrt(4.0 * radius * radius - diff[2] * diff[2])
-        alpha = pi/2.0
+        diff = SVector(sqrt(4.0 * radius * radius - diff[2] * diff[2]), diff[2])
+        alpha = π / 2.0
     else
         alpha = asin(2.0 * radius / center_distance)
     end
-        
+
     centerAngle = atan(diff[2], diff[1]) - alpha
 
     if centerAngle > pitchmax[1]
@@ -263,15 +269,15 @@ function _RSL(self, pitchmax)
         # points on boundary between C and S segments
         c1, s1 = radius * cos(centerAngle), radius * sin(centerAngle)
         c2, s2 = radius * cos(centerAngle), radius * sin(centerAngle)
-        w1 = o1 - [ s1, -c1]
-        w2 = o2 - [-s2,  c2]
+        w1 = o1 - SVector(s1, -c1)
+        w2 = o2 - SVector(-s2, c2)
 
         p = (w2[2] - w1[2]) / sin(centerAngle) / radius
     end
 
-    length = (t+p+q) * self.rhomin
+    length = (t + p + q) * self.rhomin
     case = "RSL"
-    
+
     return DubinsStruct(t, p, q, length, case)
 end
 
