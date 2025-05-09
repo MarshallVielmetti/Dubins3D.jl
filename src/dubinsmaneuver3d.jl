@@ -38,6 +38,10 @@ function DubinsManeuver3D(qi::Vector, qf::Vector, rhomin, pitchlims::Vector)
     )
 end
 
+function wrapToPi(x::Float64)
+    return atan(sin(x), cos(x))
+end
+
 """
     DubinsManeuver3D(qi, qf, rhomin, pitchlims)
 
@@ -112,7 +116,7 @@ function compute_sampling(self::DubinsManeuver3D; numberOfSamples::Integer=1000)
         offsetLon = (i - 1) * step
         qSZ = getCoordinatesAt(Dlon, offsetLon)
         qXY = getCoordinatesAt(Dlat, qSZ[1])
-        points[i] = SVector{5,Float64}(qXY[1], qXY[2], qSZ[2], qXY[3], qSZ[3])
+        points[i] = SVector{5,Float64}(qXY[1], qXY[2], qSZ[2], wrapToPi(qXY[3]), wrapToPi(qSZ[3]))
     end
 
     points
