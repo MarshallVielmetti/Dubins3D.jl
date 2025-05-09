@@ -95,6 +95,10 @@ function DubinsManeuver3D(qi::SVector{5,Float64}, qf::SVector{5,Float64},
         step *= -0.1
     end
 
+    # Assign the best paths to maneuver.path
+    maneuver.path[1] = result[1]
+    maneuver.path[2] = result[2]
+
     return maneuver
 end
 
