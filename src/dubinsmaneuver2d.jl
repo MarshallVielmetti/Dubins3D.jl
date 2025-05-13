@@ -184,7 +184,7 @@ function getCoordinatesAt(self::DubinsManeuver2D, offset::Float64)::SVector{3,Fl
     # Offset normalizado
     noffset = offset / self.rhomin
 
-    qi = @SVector Float64[0.0, 0.0, self.qi[3]]
+    qi = @SVector [0.0, 0.0, self.qi[3]]
 
     # Gerando as configurações intermediárias            
     l1 = self.maneuver.t
@@ -201,17 +201,10 @@ function getCoordinatesAt(self::DubinsManeuver2D, offset::Float64)::SVector{3,Fl
         q = getPositionInSegment(self, noffset - l1 - l2, q2, self.maneuver.case[3])
     end
 
-    return @SVector Float64[q[1] * self.rhomin + self.qi[1]
+    return @SVector [q[1] * self.rhomin + self.qi[1]
         q[2] * self.rhomin + self.qi[2]
         mod2pi(q[3])
     ]
-
-    # # Translação para a posição anterior
-    # q[1] = q[1] * self.rhomin + self.qi[1]
-    # q[2] = q[2] * self.rhomin + self.qi[2]
-    # q[3] = mod2pi(q[3])
-
-    # return q
 end
 
 function getPositionInSegment(self::DubinsManeuver2D, offset::Float64, qi::SVector{3,Float64}, case::Char)::SVector{3,Float64}

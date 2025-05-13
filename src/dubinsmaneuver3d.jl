@@ -122,6 +122,23 @@ function compute_sampling(self::DubinsManeuver3D; numberOfSamples::Integer=1000)
     points
 end
 
+"""
+    compute_at_len(self::DubinsManeuver3D; offsetLon::Float64=0.0)
+
+Compute the coordinates a specific distance along the path
+"""
+function compute_at_len(self::DubinsManeuver3D; offset::Float64=0.0)
+    @assert offsetLon >= 0
+    @assert offsetLon <= self.length
+
+    Dlat, Dlon = self.path
+    offsetLon = (Dlon.maneuver.length / self.length) * offset
+
+    qSZ = getCoordinatesAt(Dlon, offsetLon)
+    qXY = getCoordinatesAt(Dlat, qSZ[1])
+    return SVector{5,Float64}(qXY[1], qXY[2], qSZ[2], wrapToPi(qXY[3]), wrapToPi(qSZ[3]))
+end
+
 function try_to_construct!(result::Vector{DubinsManeuver2D}, self::DubinsManeuver3D, horizontal_radius::Float64)
     qi2D = SVector{3,Float64}(self.qi[1], self.qi[2], self.qi[4])
     qf2D = SVector{3,Float64}(self.qf[1], self.qf[2], self.qf[4])
