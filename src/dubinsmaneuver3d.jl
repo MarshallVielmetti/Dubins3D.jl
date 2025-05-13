@@ -127,9 +127,9 @@ end
 
 Compute the coordinates a specific distance along the path
 """
-function compute_at_len(self::DubinsManeuver3D; offset::Float64=0.0)
-    @assert offsetLon >= 0
-    @assert offsetLon <= self.length
+function compute_at_len(self::DubinsManeuver3D, offset::Float64=0.0)
+    @assert offset >= 0
+    @assert offset <= self.length
 
     Dlat, Dlon = self.path
     offsetLon = (Dlon.maneuver.length / self.length) * offset
