@@ -171,7 +171,7 @@ end
 end
 
 ########## C ##########
-@inline function _C(self::DubinsManeuver2D)::DubinsStruct{F} where {F<:Real}
+@inline function _C(self::DubinsManeuver2D{F})::DubinsStruct{F} where {F<:Real}
     t = F(0.0)
     p = F(2 * pi)
     q = F(0.0)
@@ -182,23 +182,21 @@ end
 
 function getCoordinatesAt(self::DubinsManeuver2D, offset::F)::SVector{3,F} where {F<:Real}
     # Normalize Offset
-    noffset = offset / self.rhomin
+    normalized_offset = F(offset / self.rhomin)
 
-    qi = SVector{3,F}(F(0.0), F(0.0), self.qi[3])
+    qi = SVector{3,F}(F(0.0), F(0.0), F(self.qi[3]))
 
-    # Gerando as configurações intermediárias            
-    l1 = self.maneuver.t
-    l2 = self.maneuver.p
-    q1 = getPositionInSegment(self, l1, qi, self.maneuver.case[1]) # Final do segmento 1
-    q2 = getPositionInSegment(self, l2, q1, self.maneuver.case[2]) # Final do segmento 2
+    l1 = F(self.maneuver.t)
+    l2 = F(self.maneuver.p)
+    q1 = getPositionInSegment(self, l1, qi, self.maneuver.case[1]) # End of segment 1
+    q2 = getPositionInSegment(self, l2, q1, self.maneuver.case[2]) # End of segment 2
 
-    # Obtendo o restante das configurações
-    if (noffset < l1)
-        q = getPositionInSegment(self, noffset, qi, self.maneuver.case[1])
-    elseif (noffset < (l1 + l2))
-        q = getPositionInSegment(self, noffset - l1, q1, self.maneuver.case[2])
+    if (normalized_offset < l1)
+        q = getPositionInSegment(self, normalized_offset, qi, self.maneuver.case[1])
+    elseif (normalized_offset < (l1 + l2))
+        q = getPositionInSegment(self, normalized_offset - l1, q1, self.maneuver.case[2])
     else
-        q = getPositionInSegment(self, noffset - l1 - l2, q2, self.maneuver.case[3])
+        q = getPositionInSegment(self, normalized_offset - l1 - l2, q2, self.maneuver.case[3])
     end
 
     return SVector{3,F}(q[1] * self.rhomin + self.qi[1],
