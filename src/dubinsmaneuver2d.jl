@@ -180,8 +180,8 @@ end
     return DubinsStruct{F}(t, p, q, length, case)
 end
 
-function getCoordinatesAt(self::DubinsManeuver2D{F}, offset::F)::SVector{3,F} where {F<:Real}
-    # Offset normalizado
+function getCoordinatesAt(self::DubinsManeuver2D, offset::F)::SVector{3,F} where {F<:Real}
+    # Normalize Offset
     noffset = offset / self.rhomin
 
     qi = SVector{3,F}(F(0.0), F(0.0), self.qi[3])
