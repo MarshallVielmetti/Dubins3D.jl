@@ -86,7 +86,7 @@ function DubinsManeuver2D(qi::SVector{3,F}, qf::SVector{3,F}; rhomin::F=F(1.0), 
 end
 
 ########## LSL ##########
-@inline function _LSL(self::DubinsManeuver2D{F}, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
+@inline function _LSL(self::DubinsManeuver2D, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
     aux = atan(cb - ca, d + sa - sb)
     t = mod2pi(-a + aux)
     p = sqrt(2 + d^2 - 2 * cos(a - b) + 2 * d * (sa - sb))
@@ -97,7 +97,7 @@ end
 end
 
 ########## RSR ##########
-@inline function _RSR(self::DubinsManeuver2D{F}, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
+@inline function _RSR(self::DubinsManeuver2D, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
     aux = atan(ca - cb, d - sa + sb)
     t = mod2pi(a - aux)
     p = sqrt(2 + d^2 - 2 * cos(a - b) + 2 * d * (sb - sa))
@@ -108,7 +108,7 @@ end
 end
 
 ########## LSR ##########
-@inline function _LSR(self::DubinsManeuver2D{F}, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
+@inline function _LSR(self::DubinsManeuver2D, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
     aux1 = -2 + d^2 + 2 * cos(a - b) + 2 * d * (sa + sb)
     if (aux1 > 0)
         p = sqrt(aux1)
@@ -124,7 +124,7 @@ end
 end
 
 ########## RSL ##########
-@inline function _RSL(self::DubinsManeuver2D{F}, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
+@inline function _RSL(self::DubinsManeuver2D, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
     aux1 = d^2 - 2 + 2 * cos(a - b) - 2 * d * (sa + sb)
     if (aux1 > 0)
         p = sqrt(aux1)
@@ -140,7 +140,7 @@ end
 end
 
 ########## RLR ##########
-@inline function _RLR(self::DubinsManeuver2D{F}, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
+@inline function _RLR(self::DubinsManeuver2D, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
     aux = (6 - d^2 + 2 * cos(a - b) + 2 * d * (sa - sb)) / 8
     if (abs(aux) <= 1)
         p = mod2pi(-acos(aux))
@@ -156,7 +156,7 @@ end
 
 
 ########## LRL ##########
-@inline function _LRL(self::DubinsManeuver2D{F}, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
+@inline function _LRL(self::DubinsManeuver2D, a::F, b::F, d::F, sa::F, ca::F, sb::F, cb::F)::DubinsStruct{F} where {F<:Real}
     aux = (6 - d^2 + 2 * cos(a - b) + 2 * d * (-sa + sb)) / 8
     if (abs(aux) <= 1)
         p = mod2pi(-acos(aux))
@@ -171,7 +171,7 @@ end
 end
 
 ########## C ##########
-@inline function _C(self::DubinsManeuver2D{F})::DubinsStruct{F} where {F<:Real}
+@inline function _C(self::DubinsManeuver2D)::DubinsStruct{F} where {F<:Real}
     t = F(0.0)
     p = F(2 * pi)
     q = F(0.0)
@@ -206,7 +206,7 @@ function getCoordinatesAt(self::DubinsManeuver2D, offset::F)::SVector{3,F} where
         mod2pi(q[3]))
 end
 
-function getPositionInSegment(self::DubinsManeuver2D{F}, offset::F, qi::SVector{3,F}, case::Char)::SVector{3,F} where {F<:Real}
+function getPositionInSegment(self::DubinsManeuver2D, offset::F, qi::SVector{3,F}, case::Char)::SVector{3,F} where {F<:Real}
     if (case == 'L')
         return SVector{3,F}(
             qi[1] + sin(qi[3] + offset) - sin(qi[3]),
@@ -229,7 +229,7 @@ function getPositionInSegment(self::DubinsManeuver2D{F}, offset::F, qi::SVector{
     return SVector{3,F}(F(0.0), F(0.0), F(0.0))  # Should never reach here
 end
 
-function getSamplingPoints(self::DubinsManeuver2D{F}, res::F=F(0.1))::Vector{SVector{3,F}} where {F<:Real}
+function getSamplingPoints(self::DubinsManeuver2D, res::F=F(0.1))::Vector{SVector{3,F}} where {F<:Real}
     points = Vector{SVector{3,F}}()
     range = F(0.0):res:self.maneuver.length
     for offset in range
