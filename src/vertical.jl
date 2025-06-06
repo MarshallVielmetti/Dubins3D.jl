@@ -2,7 +2,7 @@ using StaticArrays
 
 include("dubinsmaneuver2d.jl")
 
-function Vertical(qi::SVector{3,Float64}, qf::SVector{3,Float64}, rhomin::Float64, pitchmax::SVector{2,Float64})::DubinsManeuver2D
+function Vertical(qi::SVector{3,F}, qf::SVector{3,F}, rhomin::F, pitchmax::SVector{2,F})::DubinsManeuver2D where {F<:Real}
     maneuver = DubinsManeuver2D(qi, qf, rhomin, DubinsStruct(0.0, 0.0, 0.0, Inf, ""))
 
     dx = maneuver.qf[1] - maneuver.qi[1]
@@ -171,7 +171,7 @@ function _RSR(self::DubinsManeuver2D)::DubinsStruct
 end
 
 ########## LSR ##########
-function _LSR(self::DubinsManeuver2D, pitchmax::SVector{2,Float64})::DubinsStruct
+function _LSR(self::DubinsManeuver2D, pitchmax::SVector{2,F})::DubinsStruct where {F<:Real}
     theta1 = self.qi[3]
     theta2 = self.qf[3]
 
@@ -227,7 +227,7 @@ end
 
 
 ########## RSL ##########
-function _RSL(self::DubinsManeuver2D, pitchmax::SVector{2,Float64})::DubinsStruct
+function _RSL(self::DubinsManeuver2D, pitchmax::SVector{2,F})::DubinsStruct where {F<:Real}
     theta1 = self.qi[3]
     theta2 = self.qf[3]
 
